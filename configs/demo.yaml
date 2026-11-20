@@ -1,0 +1,11 @@
+{
+  "model": "r03b",
+  "model_dir": "models",
+  "camera": 0,
+  "device": "auto",
+  "mirror": true,
+  "debug": false,
+  "consistent_frames": 5,
+  "open_seconds": 2.0,
+  "cooldown_seconds": 5.0
+}

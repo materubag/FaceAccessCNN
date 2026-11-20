@@ -1,0 +1,2 @@
+"""Parametros YuNet verificados; el modelo se resuelve mediante package resources."""
+PROFILE = {'name': 'yunet_v1', 'detector': 'yunet', 'model_sha256': 'ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0', 'max_width': 640, 'candidate_score': 0.6, 'accept_score': 0.9, 'nms_threshold': 0.3, 'top_k': 5000, 'min_face_pixels': 48, 'aspect_range': [0.45, 1.6], 'min_visible_bbox_fraction': 0.9, 'max_crop_padding_fraction': 0.2, 'margin': 0.12, 'output_size': 96, 'padding_value': 127, 'align_eyes': False, 'blur_threshold': 60, 'duplicate_distance': 5}

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "face-access-cnn"
+version = "1.0.0"
+description = "Reconocimiento facial con CNN propia, YuNet y acceso simulado"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+license = "MIT"
+dependencies = [
+  "torch>=2.14.1,<2.15",
+  "numpy>=2.5.5,<2.6",
+  "opencv-contrib-python==5.1.0.95",
+  "scikit-learn>=1.9.1,<1.10",
+  "matplotlib>=3.11.2,<3.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+face-access = "face_access.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+face_access = ["resources/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
