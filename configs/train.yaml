@@ -1,0 +1,14 @@
+{
+  "data_root": "data/captures",
+  "manifest": "data/manifest.csv",
+  "output": "runs/face_model",
+  "authorized": ["persona_01", "persona_02", "persona_03"],
+  "session_splits": {"sesion_01": "train", "sesion_02": "val", "sesion_03": "test"},
+  "minimum_per_identity": 10,
+  "minimum_unknown_identities": 2,
+  "seed": 42,
+  "model": {"channels": [32, 64, 128], "kernel_size": 3, "padding": 1, "stride": 1, "hidden": 64, "dropout": 0.3, "head": "flatten"},
+  "training": {"batch_size": 32, "epochs": 50, "lr": 0.001, "weight_decay": 0.0001, "patience": 7, "amp": true},
+  "augmentation": {"name": "moderate", "horizontal_flip_probability": 0.5, "affine_probability": 0.7, "rotation_degrees": 8.0, "scale_range": [0.92, 1.08], "translation_fraction": 0.04, "brightness_probability": 1.0, "brightness_range": [0.85, 1.15], "contrast_probability": 0.3, "contrast_range": [0.9, 1.1]},
+  "decision": {"target_far": 0.01, "margin": 0.15}
+}
