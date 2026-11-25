@@ -40,3 +40,30 @@ def test_demo_can_open_camera_with_directshow(monkeypatch):
     run_demo('unused','unused',settings,preview_only=True)
 
     capture.assert_called_once_with(1,cv2.CAP_DSHOW)
+
+
+def test_demo_stream_without_video_keeps_waiting_and_keeps_barrier_closed(monkeypatch):
+    from face_access.barrier import BarrierStatus
+    frame=np.zeros((240,320,3),np.uint8)
+    camera=Mock();camera.isOpened.return_value=True;camera.error='timed out';camera.read.side_effect=[(False,None),(True,frame)]
+    barrier=Mock();barrier.status.return_value=BarrierStatus(ip='192.168.1.50')
+    opened=[]
+    monkeypatch.setattr('face_access.demo.MjpegCamera',lambda url:opened.append(url) or camera)
+    monkeypatch.setattr('face_access.demo.BarrierLink',lambda host,port:barrier)
+    model=SimpleNamespace(labels=['alice','Desconocido'],checkpoint=dict(smoke_only=False,experimental=False,model_id='trained'),
+        calibration=dict(threshold=.9,margin=.15),predict=Mock())
+    pipeline=Mock();pipeline.process.return_value=dict(face_count=0,status='no_face',results=[])
+    monkeypatch.setattr('face_access.demo.Predictor',lambda *a:model);monkeypatch.setattr('face_access.demo.ProfilePipeline',lambda *a,**k:pipeline)
+    shown=[];monkeypatch.setattr('face_access.demo.cv2.imshow',lambda name,view:shown.append(view.shape))
+    keys=iter([0,ord('q')]);monkeypatch.setattr('face_access.demo.cv2.waitKey',lambda _:next(keys))
+    monkeypatch.setattr('face_access.demo.cv2.getWindowProperty',lambda *a:1);monkeypatch.setattr('face_access.demo.cv2.destroyAllWindows',lambda:None)
+    settings=dict(camera='http://camara.local:81/stream',barrier_host='pluma.local',barrier_port=4211,device='cpu',mirror=True,debug=False,
+        consistent_frames=5,open_seconds=2.,cooldown_seconds=5.)
+
+    run_demo('unused','unused',settings)
+
+    assert opened==['http://camara.local:81/stream']
+    # Primero la pantalla de "sin video" con el tamaño por defecto, luego el frame real.
+    assert shown[0]==(480,640,3) and shown[1][:2]==(240,320)
+    assert [c.args for c in barrier.set_open.call_args_list]==[(False,),(False,)]
+    barrier.close.assert_called_once();camera.release.assert_called_once();model.predict.assert_not_called()

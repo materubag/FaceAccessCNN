@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+# Resolver camara.local / pluma.local cuando Windows no lo hace solo.
+esp32 = ["zeroconf>=0.132"]
 
 [project.scripts]
 face-access = "face_access.cli:main"

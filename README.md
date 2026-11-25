@@ -87,6 +87,75 @@ desconocidos legales disjuntos y aprobaciones humanas. Añadir una carpeta o
 capturar `persona_04` **no añade una identidad instantáneamente**: actualizar
 clases, reconstruir manifiesto, entrenar y recalibrar. Véase el flujo completo.
 
+## ESP32-CAM y pluma con servo
+
+Opcional. La ESP32-CAM manda el video por WiFi y un ESP32 DevKit V1 mueve un servo SG90
+como pluma de estacionamiento. El reconocimiento sigue corriendo en la PC.
+
+```text
+ESP32-CAM --WiFi, HTTP MJPEG :81--> PC (FaceAccessCNN) --WiFi, UDP :4211, 10 Hz--> ESP32 DevKit --GPIO 13--> SG90
+```
+
+### Conexión del SG90 al DevKit V1 (30 pines)
+
+| SG90 | DevKit V1 | Nota |
+| --- | --- | --- |
+| Naranja (señal) | D13 | 3.3 V basta para la señal |
+| Rojo (+5 V) | VIN | Con el DevKit por USB, VIN da ~5 V |
+| Café (GND) | GND | |
+
+Un capacitor de 470 a 1000 µF entre rojo y café, cerca del servo, evita reinicios. Si el
+ESP32 igual se reinicia al mover el servo, alimenta el servo con 5 V aparte y une su GND
+con el del ESP32.
+
+### Firmware
+
+Con [PlatformIO](https://platformio.org/) con pioarduino (core Arduino 3.x):
+
+1. En `firmware/camara/src` y `firmware/pluma/src`, copiar `config.example.h` a `config.h`
+   y poner la red WiFi (2.4 GHz, la misma de la PC). Git ignora los `config.h`.
+2. Cargar desde PowerShell, no desde Git Bash (el instalador de pioarduino no acepta MSYS):
+
+   ```powershell
+   cd firmware\pluma;  pio run -e devkit -t upload;   pio device monitor
+   cd firmware\camara; pio run -e esp32cam -t upload; pio device monitor
+   ```
+
+   El monitor serie muestra la IP de cada placa y el sensor de la cámara. La ESP32-CAM AI
+   Thinker sin base USB necesita GPIO0 a GND durante la carga.
+3. Probar la pluma sin cámara y ajustar `SERVO_CLOSED_US` y `SERVO_OPEN_US` en su `config.h`:
+
+   ```powershell
+   python -m face_access barrier --host pluma.local
+   ```
+
+4. Ver el stream en `http://camara.local:81/stream` y luego cerrarlo: solo admite un cliente.
+
+**Resolución.** La CNN usa recortes de 96x96, así que basta con que la cara mida ~80 px.
+XGA (1024x768, el valor por defecto) lo cumple a ~1 m con el lente normal. Con lente gran
+angular, acercarse o subir a HD sin cargar firmware: `http://camara.local:81/control?var=framesize&val=13`.
+
+**Volver a calibrar con la ESP32-CAM.** El OV2640 tiene otro ruido, color y compresión que
+una webcam USB: el umbral calibrado con otra cámara no se transfiere. Capturar y calibrar
+con la misma fuente que se usará en la demo:
+
+```powershell
+python -m face_access capture --person persona_01 --session sesion_esp_01 --source http://camara.local:81/stream --consent --independent-session
+python -m face_access demo --camera http://camara.local:81/stream --barrier pluma.local
+```
+
+**Teléfono como cámara.** Con la app IP Webcam (Android), en la misma red, usar la ruta
+del video y `http` (no `https`): `--camera http://IP:8080/video`. La raíz `http://IP:8080`
+es la página de control de la app, no el video. `http://IP:8080/shot.jpg` también sirve
+(una foto por petición, menos fps). Si la app tiene usuario y clave:
+`http://usuario:clave@IP:8080/video`. El mismo valor sirve en `capture --source`.
+
+Si Windows no resuelve los nombres `.local`, usar las IP del monitor serie o instalar
+`python -m pip install -e ".[esp32]"`. Sin `--barrier` la puerta sigue simulada. Si se
+corta el video, la pluma se cierra y la demo espera a que la cámara vuelva; si se corta el
+enlace con la pluma o se cierra la PC, el ESP32 la cierra solo a los 500 ms.
+Protocolo: [docs/protocolo-pluma.md](docs/protocolo-pluma.md).
+
 ## Documentación y pruebas
 
 - [Captura, datos, entrenamiento y calibración](docs/training.md).

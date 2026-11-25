@@ -10,8 +10,11 @@ def parser():
     sub=p.add_subparsers(dest='command',required=True)
     demo=sub.add_parser('demo',help='Webcam con r03b/r02 o checkpoint propio')
     demo.add_argument('--config',type=Path);demo.add_argument('--model',choices=['r03b','r02']);demo.add_argument('--model-dir',type=Path)
-    demo.add_argument('--checkpoint',type=Path);demo.add_argument('--calibration',type=Path);demo.add_argument('--camera',type=int)
+    demo.add_argument('--checkpoint',type=Path);demo.add_argument('--calibration',type=Path)
+    demo.add_argument('--camera',help='Índice de webcam (0, 1...) o URL de cámara de red: ESP32-CAM http://camara.local:81/stream, IP Webcam http://IP:8080/video')
     demo.add_argument('--camera-backend',choices=['auto','dshow','msmf'])
+    demo.add_argument('--barrier',dest='barrier_host',metavar='HOST',help='Pluma ESP32 por UDP (pluma.local o su IP); sin esto la puerta es simulada')
+    demo.add_argument('--barrier-port',type=int)
     demo.add_argument('--device',choices=['auto','cpu','cuda']);demo.add_argument('--no-mirror',action='store_true');demo.add_argument('--debug',action='store_true')
     demo.add_argument('--preview-only',action='store_true');demo.add_argument('--check',action='store_true',help='Cargar/validar sin abrir cámara');demo.add_argument('--events',type=Path)
     cap=sub.add_parser('capture',help='Capturar candidatos con consentimiento; no aprueba imágenes')
@@ -33,6 +36,9 @@ def parser():
     imp=actions.add_parser('import',help='Importar artefactos de confianza con permiso de uso LOCAL')
     imp.add_argument('--name',choices=['r02','r03b'],required=True);imp.add_argument('--checkpoint',type=Path,required=True);imp.add_argument('--calibration',type=Path,required=True);imp.add_argument('--model-dir',type=Path,default=Path('models'))
     sub.add_parser('self-test',help='YuNet/CNN/tensor sintéticos CPU; sin cámara ni datos privados')
+    barrier=sub.add_parser('barrier',help='Abrir y cerrar la pluma ESP32 sin cámara para probar cables y servo')
+    barrier.add_argument('--host',default='pluma.local');barrier.add_argument('--port',type=int,default=4211)
+    barrier.add_argument('--cycles',type=int,default=3);barrier.add_argument('--seconds',type=float,default=2.)
     return p
 
 
@@ -42,14 +48,16 @@ def main(argv=None):
         if args.command=='demo':
             from .demo import run_demo
             settings=dict(model='r03b',model_dir='models',camera=0,camera_backend='auto',device='auto',mirror=True,debug=False,
-                consistent_frames=5,recognition_seconds=1.5,open_seconds=2.,cooldown_seconds=5.)
+                consistent_frames=5,recognition_seconds=1.5,open_seconds=2.,cooldown_seconds=5.,barrier_host=None,barrier_port=4211)
             default=Path('configs/demo.yaml')
             path=args.config or (default if default.exists() else None)
             if path:
                 settings.update(load_config(path))
                 settings['model_dir']=resolve(settings['model_dir'],path.resolve().parent.parent)
-            for field in ('model','model_dir','camera','camera_backend','device'):
+            for field in ('model','model_dir','camera','camera_backend','device','barrier_host','barrier_port'):
                 if getattr(args,field) is not None:settings[field]=getattr(args,field)
+            from .sources import parse_camera
+            settings['camera']=parse_camera(settings['camera'])
             if args.no_mirror:settings['mirror']=False
             if args.debug:settings['debug']=True
             if args.model is not None and args.checkpoint is not None:raise ValueError('Elegir --model o --checkpoint')
@@ -86,6 +94,10 @@ def main(argv=None):
                 print(json.dumps({name:dict(threshold=item['threshold'],weights_distributed=False,
                     local_available=(args.model_dir/(name+'.pt')).exists() and (args.model_dir/(name+'_calibration.json')).exists()) for name,item in MODELS.items()},indent=2))
             else:print(import_model(args.checkpoint,args.calibration,args.model_dir,args.name))
+        elif args.command=='barrier':
+            from .barrier import run_test
+            if args.cycles<1 or args.seconds<=0:raise ValueError('--cycles y --seconds deben ser positivos')
+            run_test(args.host,args.port,args.cycles,args.seconds)
         elif args.command=='self-test':
             import numpy as np
             import torch

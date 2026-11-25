@@ -24,3 +24,7 @@ models/*
 !models/README.md
 .DS_Store
 Thumbs.db
+
+# Firmware (PlatformIO): credenciales locales y compilación
+firmware/*/src/config.h
+.pio/

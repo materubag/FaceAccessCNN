@@ -10,6 +10,7 @@ from .common import canonical, digest, read_json, save_json
 from .config import contract_hash
 from .detection import ProfilePipeline, annotate
 from .preprocessing import read_image
+from .sources import URL_HELP, MjpegCamera, is_stream_url
 
 
 def identifier(value):
@@ -28,7 +29,10 @@ def capture(person, session, source="0", data_root="data/captures", unknown=Fals
     root=Path(data_root).resolve();branch=root/"unknown"/split/person/session if unknown else root/"authorized"/person/session
     directory=branch/uuid.uuid4().hex[:12];directory.mkdir(parents=True,exist_ok=False)
     pipeline=ProfilePipeline("yunet_v1",deduplicate=True);inventory=[];processed=0;cap=None
-    source_path=Path(source);is_camera=str(source).isdecimal();stills=sorted(p for p in source_path.iterdir() if p.suffix.lower() in {'.jpg','.jpeg','.png'}) if source_path.is_dir() else None
+    # Una URL (ESP32-CAM) se trata como cámara en vivo: muestreo por reloj y sin FPS del archivo.
+    is_stream=is_stream_url(str(source))
+    source_path=Path(source);is_camera=str(source).isdecimal() or is_stream
+    stills=sorted(p for p in source_path.iterdir() if p.suffix.lower() in {'.jpg','.jpeg','.png'}) if not is_stream and source_path.is_dir() else None
     source_id="camera:"+uuid.uuid4().hex if is_camera else "source:"+digest(source_path) if stills is None else None
     def store(frame,index,seconds,origin):
         nonlocal processed
@@ -57,8 +61,11 @@ def capture(person, session, source="0", data_root="data/captures", unknown=Fals
             for index,path in enumerate(stills):
                 if processed>=limit or not store(read_image(path),index,0.,'image:'+digest(path)):break
         else:
-            cap=cv2.VideoCapture(int(source) if is_camera else str(source_path))
-            if not cap.isOpened(): raise RuntimeError('No se pudo abrir la cámara/video; comprobar --source y permisos')
+            if is_stream:cap=MjpegCamera(str(source).strip())
+            else:cap=cv2.VideoCapture(int(source) if is_camera else str(source_path))
+            if not cap.isOpened():
+                if is_stream:raise RuntimeError(f'No llega video de {source}: {cap.error or "sin respuesta"}. Rutas: {URL_HELP}')
+                raise RuntimeError('No se pudo abrir la cámara/video; comprobar --source y permisos')
             source_fps=cap.get(cv2.CAP_PROP_FPS)
             if not is_camera and (not np.isfinite(source_fps) or source_fps<=0):raise ValueError('Video sin FPS válidos')
             next_sample=0.;index=-1;started=time.monotonic()
