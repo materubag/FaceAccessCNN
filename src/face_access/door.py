@@ -23,9 +23,11 @@ class DoorState:
     update conserva la API (opened, authorization_event). step expone diagnostico.
     Las causas inseguras siempre cierran, reinician el contador y conservan cooldown.
     """
-    def __init__(self,consistent_frames=5,cooldown_seconds=5,open_seconds=2, authorized_classes=3):
+    def __init__(self,consistent_frames=5,cooldown_seconds=5,open_seconds=2, authorized_classes=3,recognition_seconds=1.5):
+        if not np.isfinite(recognition_seconds) or recognition_seconds<0:raise ValueError("Tiempo de deteccion invalido")
         self.authorized_classes=authorized_classes; self.required=consistent_frames; self.cooldown=cooldown_seconds; self.duration=open_seconds
-        self.identity=None; self.count=0; self.last_open=-float("inf"); self.until=0
+        self.recognition_seconds=recognition_seconds
+        self.identity=None; self.identity_since=None; self.count=0; self.last_open=-float("inf"); self.until=0
         self.state="START";self.last_transition={};self.last_time=None
     def update(self,label,face_count,now=None):
         status=self.step(label,face_count,now)
@@ -56,10 +58,10 @@ class DoorState:
             state="DENIED";reason=rejection_reason or "unknown_or_classifier_rejected"
         else:state=None
         if state is not None:
-            self.identity=None; self.count=0; self.until=0
+            self.identity=None; self.identity_since=None; self.count=0; self.until=0
         else:
             changed=label!=self.identity
-            if changed:self.identity=label;self.count=1;self.until=0
+            if changed:self.identity=label;self.identity_since=now;self.count=1;self.until=0
             else:self.count=min(self.required,self.count+1)
             if now<self.until:
                 state="DOOR_OPEN";reason="open_timer_active"
@@ -67,6 +69,8 @@ class DoorState:
                 state="COOLDOWN";reason="open_timer_elapsed" if expired else "identity_changed" if changed and old_identity is not None else "cooldown_active"
             elif self.count<self.required:
                 state="VERIFYING";reason="identity_changed" if changed and old_identity is not None else "waiting_consistent_predictions"
+            elif now-self.identity_since<self.recognition_seconds:
+                state="VERIFYING";reason="waiting_minimum_detection_time"
             else:
                 state="AUTHORIZED";reason="consecutive_predictions_confirmed"
                 self.last_open=now;self.until=now+self.duration;event=True;self.count=0

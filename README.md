@@ -15,8 +15,9 @@ No utiliza embeddings ni clasificadores de identidad preentrenados.
 - Detección y ROI cuadrada con controles de calidad.
 - Grises, mediana3×3 y tensor1×96×96 en[0,1].
 - Rechazo mediante clase desconocida, score y margen top-2.
-- Cinco confirmaciones, apertura2s y cooldown5s desde autorización.
+- Cinco confirmaciones y 1,5s de detección continua; apertura2s y cooldown5s desde autorización.
 - Espejo solo visual; diagnóstico y selección de modelo.
+- Selección de cámara y backend de captura en Windows (`auto`, `dshow`, `msmf`).
 - Captura consentida, revisión humana, splits por sesión e identidades externas.
 - Entrenamiento desde cero y calibración exclusivamente con validación.
 
@@ -59,6 +60,7 @@ python -m face_access models import --name r03b --checkpoint ruta/al/checkpoint.
 python -m face_access demo --model r03b --check
 python -m face_access demo --model r03b
 python -m face_access demo --model r02 --camera 1 --no-mirror --debug
+python -m face_access demo --preview-only --camera 1 --camera-backend dshow
 ```
 
 R03-B es el candidato experimental predeterminado; R02 es la alternativa oficial.

@@ -17,7 +17,8 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
     if predictor is not None and predictor.calibration is None:raise ValueError('Primero evaluar/calibrar con val')
     labels=predictor.labels if predictor else ['Autorizado','Desconocido']
     pipeline=ProfilePipeline('yunet_v1',deduplicate=False)
-    door=DoorState(consistent_frames=settings['consistent_frames'],open_seconds=settings['open_seconds'],cooldown_seconds=settings['cooldown_seconds'],authorized_classes=len(labels)-1)
+    door=DoorState(consistent_frames=settings['consistent_frames'],open_seconds=settings['open_seconds'],cooldown_seconds=settings['cooldown_seconds'],
+        authorized_classes=len(labels)-1,recognition_seconds=settings.get('recognition_seconds',1.5))
     if door.required<1 or door.duration<=0 or door.cooldown<door.duration:raise ValueError('Temporizadores/confirmaciones inválidos')
     model_name='SOLO DETECCION: sin identidad' if predictor is None else ('EXPERIMENTAL ' if predictor.checkpoint['experimental'] else '')+predictor.checkpoint['model_id'].upper()
     threshold=predictor.calibration['threshold'] if predictor else 1.;margin=predictor.calibration['margin'] if predictor else .15
@@ -30,7 +31,15 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
     print(model_name,'| Sin detección de vida; puerta simulada. D diagnóstico; Q salir.')
     try:
         with stream as logger:
-            camera=cv2.VideoCapture(settings['camera'])
+            backend=settings.get('camera_backend','auto')
+            if backend=='auto':
+                camera=cv2.VideoCapture(settings['camera'])
+            elif backend=='dshow':
+                camera=cv2.VideoCapture(settings['camera'],cv2.CAP_DSHOW)
+            elif backend=='msmf':
+                camera=cv2.VideoCapture(settings['camera'],cv2.CAP_MSMF)
+            else:
+                raise ValueError('Backend de cámara inválido; usar auto, dshow o msmf')
             if not camera.isOpened():raise RuntimeError('Webcam no disponible; probar --camera 1 y permisos de Windows')
             while True:
                 ok,frame=camera.read()

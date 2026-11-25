@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 import json
+import cv2
 import numpy as np
 from face_access.detection import Detection
 from face_access.demo import run_demo
@@ -25,3 +26,17 @@ def test_demo_mirror_is_visual_and_invalid_roi_cannot_reuse_previous_crop(tmp_pa
     np.testing.assert_array_equal(frame,before);camera.release.assert_called_once()
     rows=[json.loads(line) for line in events.read_text(encoding='utf-8').splitlines()]
     assert rows[-1]['state']=='QUALITY_BLOCKED' and rows[-1]['predicted'] is None
+
+
+def test_demo_can_open_camera_with_directshow(monkeypatch):
+    camera=Mock();camera.isOpened.return_value=True;camera.read.return_value=(False,None)
+    capture=Mock(return_value=camera)
+    monkeypatch.setattr('face_access.demo.cv2.VideoCapture',capture)
+    monkeypatch.setattr('face_access.demo.ProfilePipeline',lambda *a,**k:Mock())
+    monkeypatch.setattr('face_access.demo.cv2.destroyAllWindows',lambda:None)
+    settings=dict(camera=1,camera_backend='dshow',device='cpu',mirror=True,debug=False,
+        consistent_frames=5,open_seconds=2.,cooldown_seconds=5.)
+
+    run_demo('unused','unused',settings,preview_only=True)
+
+    capture.assert_called_once_with(1,cv2.CAP_DSHOW)

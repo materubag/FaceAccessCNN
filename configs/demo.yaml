@@ -6,6 +6,7 @@
   "mirror": true,
   "debug": false,
   "consistent_frames": 5,
+  "recognition_seconds": 1.5,
   "open_seconds": 2.0,
   "cooldown_seconds": 5.0
 }

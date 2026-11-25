@@ -11,6 +11,7 @@ def parser():
     demo=sub.add_parser('demo',help='Webcam con r03b/r02 o checkpoint propio')
     demo.add_argument('--config',type=Path);demo.add_argument('--model',choices=['r03b','r02']);demo.add_argument('--model-dir',type=Path)
     demo.add_argument('--checkpoint',type=Path);demo.add_argument('--calibration',type=Path);demo.add_argument('--camera',type=int)
+    demo.add_argument('--camera-backend',choices=['auto','dshow','msmf'])
     demo.add_argument('--device',choices=['auto','cpu','cuda']);demo.add_argument('--no-mirror',action='store_true');demo.add_argument('--debug',action='store_true')
     demo.add_argument('--preview-only',action='store_true');demo.add_argument('--check',action='store_true',help='Cargar/validar sin abrir cámara');demo.add_argument('--events',type=Path)
     cap=sub.add_parser('capture',help='Capturar candidatos con consentimiento; no aprueba imágenes')
@@ -40,13 +41,14 @@ def main(argv=None):
     try:
         if args.command=='demo':
             from .demo import run_demo
-            settings=dict(model='r03b',model_dir='models',camera=0,device='auto',mirror=True,debug=False,consistent_frames=5,open_seconds=2.,cooldown_seconds=5.)
+            settings=dict(model='r03b',model_dir='models',camera=0,camera_backend='auto',device='auto',mirror=True,debug=False,
+                consistent_frames=5,recognition_seconds=1.5,open_seconds=2.,cooldown_seconds=5.)
             default=Path('configs/demo.yaml')
             path=args.config or (default if default.exists() else None)
             if path:
                 settings.update(load_config(path))
                 settings['model_dir']=resolve(settings['model_dir'],path.resolve().parent.parent)
-            for field in ('model','model_dir','camera','device'):
+            for field in ('model','model_dir','camera','camera_backend','device'):
                 if getattr(args,field) is not None:settings[field]=getattr(args,field)
             if args.no_mirror:settings['mirror']=False
             if args.debug:settings['debug']=True
