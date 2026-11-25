@@ -23,10 +23,11 @@ class DoorState:
     update conserva la API (opened, authorization_event). step expone diagnostico.
     Las causas inseguras siempre cierran, reinician el contador y conservan cooldown.
     """
-    def __init__(self,consistent_frames=5,cooldown_seconds=5,open_seconds=2, authorized_classes=3,recognition_seconds=1.5):
+    def __init__(self,consistent_frames=5,cooldown_seconds=5,open_seconds=2, authorized_classes=3,recognition_seconds=1.5,authorization_enabled=True):
         if not np.isfinite(recognition_seconds) or recognition_seconds<0:raise ValueError("Tiempo de deteccion invalido")
         self.authorized_classes=authorized_classes; self.required=consistent_frames; self.cooldown=cooldown_seconds; self.duration=open_seconds
         self.recognition_seconds=recognition_seconds
+        self.authorization_enabled=bool(authorization_enabled)
         self.identity=None; self.identity_since=None; self.count=0; self.last_open=-float("inf"); self.until=0
         self.state="START";self.last_transition={};self.last_time=None
     def update(self,label,face_count,now=None):
@@ -56,6 +57,8 @@ class DoorState:
             state="QUALITY_BLOCKED";reason="quality_not_candidate"
         elif label not in range(self.authorized_classes):
             state="DENIED";reason=rejection_reason or "unknown_or_classifier_rejected"
+        elif not self.authorization_enabled:
+            state='DIAGNOSTIC_ONLY';reason='safety_gate_not_passed'
         else:state=None
         if state is not None:
             self.identity=None; self.identity_since=None; self.count=0; self.until=0

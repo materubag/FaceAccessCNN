@@ -19,10 +19,14 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
     if predictor is not None and predictor.calibration is None:raise ValueError('Primero evaluar/calibrar con val')
     labels=predictor.labels if predictor else ['Autorizado','Desconocido']
     pipeline=ProfilePipeline('yunet_v1',deduplicate=False)
-    door=DoorState(consistent_frames=settings['consistent_frames'],open_seconds=settings['open_seconds'],cooldown_seconds=settings['cooldown_seconds'],
-        authorized_classes=len(labels)-1,recognition_seconds=settings.get('recognition_seconds',1.5))
+    temporal=dict(consistent_frames=settings['consistent_frames'],open_seconds=settings['open_seconds'],cooldown_seconds=settings['cooldown_seconds'],
+        recognition_seconds=settings.get('recognition_seconds',1.5))
+    if predictor:temporal.update(predictor.checkpoint.get('temporal_policy',{}))
+    authorization_enabled=bool(predictor is not None and getattr(predictor,'authorization_enabled',True))
+    door=DoorState(**temporal,authorized_classes=len(labels)-1,authorization_enabled=authorization_enabled)
     if door.required<1 or door.duration<=0 or door.cooldown<door.duration:raise ValueError('Temporizadores/confirmaciones inválidos')
     model_name='SOLO DETECCION: sin identidad' if predictor is None else ('EXPERIMENTAL ' if predictor.checkpoint['experimental'] else '')+predictor.checkpoint['model_id'].upper()
+    if predictor is not None and not authorization_enabled:model_name+=' | SOLO DIAGNOSTICO - APERTURA BLOQUEADA'
     threshold=predictor.calibration['threshold'] if predictor else 1.;margin=predictor.calibration['margin'] if predictor else .15
     stream=nullcontext(None)
     if events:
@@ -31,7 +35,8 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
         path.parent.mkdir(parents=True,exist_ok=True);stream=path.open('x',encoding='utf-8')
     camera=None;previous=None;barrier=None;last_shape=(480,640,3)
     source=parse_camera(settings['camera']);streaming=is_stream_url(source)
-    actuator='pluma '+settings['barrier_host'] if settings.get('barrier_host') and not preview_only else 'puerta simulada'
+    actuator='pluma '+settings['barrier_host'] if settings.get('barrier_host') and not preview_only and authorization_enabled else 'puerta simulada'
+    if settings.get('barrier_host') and not authorization_enabled:print('Modo diagnóstico: no se conecta ni envía comandos a la pluma.')
     print(model_name,f'| Sin detección de vida; {actuator}. D diagnóstico; Q salir.')
     try:
         with stream as logger:
@@ -51,7 +56,7 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
                 if streaming:raise RuntimeError(f'No llega video de {source}: {camera.error or "sin respuesta"}. Revisar que la cámara esté encendida y en la misma red. Rutas: {URL_HELP}')
                 raise RuntimeError('Webcam no disponible; probar --camera 1 y permisos de Windows')
             # Después de abrir la cámara: así la pluma no recibe comandos si no hay video.
-            if settings.get('barrier_host') and not preview_only:barrier=BarrierLink(settings['barrier_host'],settings.get('barrier_port',DEFAULT_PORT))
+            if settings.get('barrier_host') and not preview_only and authorization_enabled:barrier=BarrierLink(settings['barrier_host'],settings.get('barrier_port',DEFAULT_PORT))
             while True:
                 ok,frame=camera.read()
                 if not ok:

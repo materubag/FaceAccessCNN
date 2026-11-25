@@ -34,7 +34,8 @@ def parser():
     models=sub.add_parser('models',help='Gestionar pesos sensibles solo de forma local');actions=models.add_subparsers(dest='action',required=True)
     listing=actions.add_parser('list');listing.add_argument('--model-dir',type=Path,default=Path('models'))
     imp=actions.add_parser('import',help='Importar artefactos de confianza con permiso de uso LOCAL')
-    imp.add_argument('--name',choices=['r02','r03b'],required=True);imp.add_argument('--checkpoint',type=Path,required=True);imp.add_argument('--calibration',type=Path,required=True);imp.add_argument('--model-dir',type=Path,default=Path('models'))
+    imp.add_argument('--name',required=True);imp.add_argument('--checkpoint',type=Path,required=True);imp.add_argument('--calibration',type=Path,required=True);imp.add_argument('--model-dir',type=Path,default=Path('models'))
+    imp.add_argument('--safety-attestation',type=Path,help='Evidencia congelada del experimento; ausente o fallida mantiene diagnóstico')
     sub.add_parser('self-test',help='YuNet/CNN/tensor sintéticos CPU; sin cámara ni datos privados')
     barrier=sub.add_parser('barrier',help='Abrir y cerrar la pluma ESP32 sin cámara para probar cables y servo')
     barrier.add_argument('--host',default='pluma.local');barrier.add_argument('--port',type=int,default=4211)
@@ -68,7 +69,7 @@ def main(argv=None):
                 if args.preview_only:raise ValueError('Para prueba de detector sin modelo: self-test')
                 predictor=Predictor(checkpoint,calibration,settings['device'])
                 if predictor.calibration is None or predictor.checkpoint['smoke_only']:raise ValueError('Checkpoint sin calibración usable o smoke')
-                print(json.dumps(dict(ok=True,model=predictor.checkpoint['model_id'],labels=predictor.labels,threshold=predictor.calibration['threshold'],margin=predictor.calibration['margin'],camera_opened=False),ensure_ascii=False))
+                print(json.dumps(dict(ok=True,model=predictor.checkpoint['model_id'],labels=predictor.labels,threshold=predictor.calibration['threshold'],margin=predictor.calibration['margin'],authorization_enabled=predictor.authorization_enabled,camera_opened=False),ensure_ascii=False))
             else:run_demo(checkpoint,calibration,settings,args.preview_only,args.events)
         elif args.command=='capture':
             from .acquisition import capture
@@ -93,7 +94,7 @@ def main(argv=None):
             if args.action=='list':
                 print(json.dumps({name:dict(threshold=item['threshold'],weights_distributed=False,
                     local_available=(args.model_dir/(name+'.pt')).exists() and (args.model_dir/(name+'_calibration.json')).exists()) for name,item in MODELS.items()},indent=2))
-            else:print(import_model(args.checkpoint,args.calibration,args.model_dir,args.name))
+            else:print(import_model(args.checkpoint,args.calibration,args.model_dir,args.name,args.safety_attestation))
         elif args.command=='barrier':
             from .barrier import run_test
             if args.cycles<1 or args.seconds<=0:raise ValueError('--cycles y --seconds deben ser positivos')

@@ -57,9 +57,10 @@ def classification(probability, threshold, margin, classes):
     return dict(predicted=predicted, label=accepted, score=score, margin=gap, reason=reason)
 
 
-def import_model(checkpoint, calibration, directory, name):
+def import_model(checkpoint, calibration, directory, name, safety_attestation=None):
     """Importación LOCAL de archivos de confianza; nunca descarga pesos sensibles."""
-    if name not in MODELS: raise ValueError("Nombre admitido: r02 o r03b")
+    if name not in MODELS:
+        return import_local_experiment(checkpoint,calibration,directory,name,safety_attestation)
     expected = MODELS[name]; checkpoint = Path(checkpoint); calibration = Path(calibration)
     ck = torch.load(checkpoint, map_location="cpu", weights_only=True)
     original_sha = ck.get("source_checkpoint_sha256", digest(checkpoint))
@@ -88,6 +89,45 @@ def import_model(checkpoint, calibration, directory, name):
     return target, target_cal
 
 
+def import_local_experiment(checkpoint,calibration,directory,name,safety_attestation=None):
+    """Conversión local de confianza; sin datos privados ni política permisiva por defecto."""
+    import re
+    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,39}',name):raise ValueError('Nombre local inválido')
+    checkpoint=Path(checkpoint);calibration=Path(calibration)
+    ck=torch.load(checkpoint,map_location='cpu',weights_only=True);cal=read_json(calibration)
+    source=digest(checkpoint)
+    if (cal.get('checkpoint_sha256')!=source or cal.get('manifest_sha256')!=ck.get('manifest_sha256') or
+            cal.get('calibrated_split')!='val' or ck.get('smoke_only') is not False or ck.get('mode')!='real'):
+        raise ValueError('Experimento/calibración incompatibles o modelo smoke/provisional')
+    old=ck.get('input_contract',{})
+    if canonical(old)!=ck.get('input_contract_sha256') or old.get('preprocessing')!=PREPROCESSING:
+        raise ValueError('Contrato original incompatible')
+    if any(old.get('detection_profile',{}).get(k)!=v for k,v in detector_profile().items()):
+        raise ValueError('Perfil YuNet incompatible')
+    if ck.get('labels')!=['Persona 1','Persona 2','Persona 3','Desconocido'] or ck['config']['model'].get('head')!='flatten':
+        raise ValueError('Etiquetas/arquitectura incompatibles')
+    # Missing, stale or failed evidence keeps every experimental import diagnostic.
+    gate=read_json(safety_attestation) if safety_attestation else {}
+    allowed=bool(gate.get('allowed') is True and gate.get('checkpoint_sha256')==source and
+        gate.get('calibration_policy_sha256')==canonical(cal) and
+        gate.get('criteria_sha256')==canonical(ck['config'].get('safety_gate_criteria')) and
+        gate.get('checks') and all(v is True for v in gate['checks'].values()))
+    folder=Path(directory);target=folder/(name+'.pt');target_cal=folder/(name+'_calibration.json')
+    if target.exists() or target_cal.exists():raise FileExistsError('Conservar modelo local existente')
+    folder.mkdir(parents=True,exist_ok=True)
+    temporal=dict(ck['config']['decision'])
+    temporal={k:temporal[k] for k in ('consistent_frames','open_seconds','cooldown_seconds')}
+    temporal['recognition_seconds']=cal.get('temporal_policy',{}).get('recognition_seconds',1.5)
+    artifact=dict(format=FORMAT,model_config=dict(ck['config']['model'],num_classes=4),labels=ck['labels'],
+        input_contract=input_contract(),contract_sha256=contract_hash(),weights=ck['weights'],weights_sha256=weights_digest(ck['weights']),
+        source_checkpoint_sha256=source,manifest_sha256=ck['manifest_sha256'],smoke_only=False,experimental=True,model_id=name,
+        frozen_calibration_sha256=digest(calibration),requires_safety_gate=True,temporal_policy=temporal,
+        safety_policy=dict(allowed=allowed,checks=gate.get('checks',{}),
+            source_attestation_sha256=digest(safety_attestation) if safety_attestation else None))
+    torch.save(artifact,target);shutil.copyfile(calibration,target_cal)
+    return target,target_cal
+
+
 class Predictor:
     def __init__(self, checkpoint, calibration=None, device="auto"):
         self.path = Path(checkpoint)
@@ -104,6 +144,7 @@ class Predictor:
         self.device = torch.device(("cuda" if torch.cuda.is_available() else "cpu") if device == "auto" else device)
         self.model = FaceCNN(**ck["model_config"]).to(self.device)
         self.model.load_state_dict(ck["weights"]); self.model.eval(); self.calibration = None
+        self.authorization_enabled=not ck.get('requires_safety_gate',False)
         if calibration is not None:
             cal = read_json(calibration)
             allowed={digest(self.path)}
@@ -114,8 +155,13 @@ class Predictor:
             if ck.get("model_id") in MODELS:
                 spec = MODELS[ck["model_id"]]
                 if digest(calibration) != spec["calibration"]: raise ValueError("Calibración congelada modificada")
+            if ck.get('frozen_calibration_sha256') and digest(calibration)!=ck['frozen_calibration_sha256']:
+                raise ValueError('Calibración congelada del experimento modificada')
             self.calibration = cal
             self.calibration_sha256=digest(calibration)
+            if ck.get('requires_safety_gate'):
+                policy=ck.get('safety_policy',{})
+                self.authorization_enabled=bool(policy.get('allowed') is True and policy.get('checks') and all(v is True for v in policy['checks'].values()))
 
     @torch.inference_mode()
     def predict(self, crop):
