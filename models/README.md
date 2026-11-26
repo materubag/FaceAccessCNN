@@ -26,7 +26,7 @@ Otros checkpoints propios pueden convertirse con `models import --name r06`
 `--safety-attestation`. Se validan pesos, etiquetas, contrato YuNet y vinculación
 de la calibración; no se cambian los registros congelados de R02/R03-B.
 Sin evidencia válida y satisfactoria, la importación conserva solo diagnóstico:
-no abre la puerta ni conecta con la pluma, aunque se indique `--barrier`.
+no abre la puerta ni conecta con la pluma al indicar solo `--barrier`.
 
 Los archivos importados se usan explícitamente, sin cambiar el modelo predeterminado:
 
@@ -38,3 +38,16 @@ R06 y R07 de desarrollo permanecen bloqueados por fallos de reconocimiento;
 su disponibilidad local no significa que estén aprobados para autorizar.
 Estos pesos y calibraciones siguen excluidos de Git. No se publica consentimiento
 para distribuirlos y no deben añadirse con `git add -f`.
+
+Para una prueba académica supervisada del servo existe una excepción explícita
+por ejecución: `--supervised-actuation`. Mantiene el umbral, margen, cinco
+confirmaciones, duración continua, calidad, cierre y cooldown. Muestra la condición
+supervisada y registra eventos en `runs/demo_events/` (sin imágenes). No cambia
+el checkpoint, su calibración o su aprobación y no corrige falsos positivos.
+
+```powershell
+python -m face_access demo --checkpoint models/r07.pt --calibration models/r07_calibration.json --camera "http://camara.local:81/stream" --barrier pluma.local --supervised-actuation --debug
+```
+
+Esta opción puede abrir físicamente la pluma ante una predicción errónea;
+se limita a una maqueta bajo supervisión. Al omitirla vuelve el bloqueo habitual.

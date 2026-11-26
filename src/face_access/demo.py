@@ -14,6 +14,8 @@ from .sources import URL_HELP,MjpegCamera,is_stream_url,parse_camera
 
 
 def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
+    supervised=bool(settings.get('supervised_actuation',False))
+    if preview_only and supervised:raise ValueError('La vista previa no admite accionamiento supervisado')
     predictor=None if preview_only else Predictor(checkpoint,calibration,settings['device'])
     if predictor is not None and predictor.checkpoint['smoke_only']:raise ValueError('Un checkpoint smoke no puede autorizar aperturas')
     if predictor is not None and predictor.calibration is None:raise ValueError('Primero evaluar/calibrar con val')
@@ -22,11 +24,19 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
     temporal=dict(consistent_frames=settings['consistent_frames'],open_seconds=settings['open_seconds'],cooldown_seconds=settings['cooldown_seconds'],
         recognition_seconds=settings.get('recognition_seconds',1.5))
     if predictor:temporal.update(predictor.checkpoint.get('temporal_policy',{}))
-    authorization_enabled=bool(predictor is not None and getattr(predictor,'authorization_enabled',True))
+    model_approval_passed=bool(predictor is not None and getattr(predictor,'authorization_enabled',True))
+    authorization_enabled=bool(predictor is not None and (model_approval_passed or supervised))
     door=DoorState(**temporal,authorized_classes=len(labels)-1,authorization_enabled=authorization_enabled)
     if door.required<1 or door.duration<=0 or door.cooldown<door.duration:raise ValueError('Temporizadores/confirmaciones inválidos')
     model_name='SOLO DETECCION: sin identidad' if predictor is None else ('EXPERIMENTAL ' if predictor.checkpoint['experimental'] else '')+predictor.checkpoint['model_id'].upper()
     if predictor is not None and not authorization_enabled:model_name+=' | SOLO DIAGNOSTICO - APERTURA BLOQUEADA'
+    if supervised:
+        model_name+=' | ACCIONAMIENTO SUPERVISADO'
+        print('PRUEBA SUPERVISADA: se habilita el servo pese a la falta de aprobación del modelo. Puede abrir para una identidad incorrecta. No cambian score, margen, calidad ni confirmaciones.')
+        if events is None:
+            import uuid
+            events=Path('runs/demo_events')/('supervised_'+uuid.uuid4().hex+'.jsonl')
+        print('Registro de la prueba:',events)
     threshold=predictor.calibration['threshold'] if predictor else 1.;margin=predictor.calibration['margin'] if predictor else .15
     stream=nullcontext(None)
     if events:
@@ -84,6 +94,7 @@ def run_demo(checkpoint,calibration,settings,preview_only=False,events=None):
                 if logger and (status.transition or previous!=(details['predicted'],details['reason'],quality['status'])):
                     logger.write(json.dumps(dict(model=model_name,state=status.state,reason=status.reason,predicted=details['predicted'],score=details['score'],margin=details['margin'],
                         faces=count,quality=quality['status'],opened=status.opened,authorization=status.authorization_event,monotonic_time=now,
+                        supervised_actuation=supervised,model_approval_passed=model_approval_passed,
                         checkpoint_sha256=getattr(predictor,'checkpoint_sha256',None),calibration_sha256=getattr(predictor,'calibration_sha256',None)),allow_nan=False)+'\n');logger.flush()
                 previous=(details['predicted'],details['reason'],quality['status'])
                 view=render_demo(frame,boxes,status,details,quality,count,settings['debug'],mirror=settings['mirror'],landmarks=landmarks,model_banner=model_name,labels=labels)

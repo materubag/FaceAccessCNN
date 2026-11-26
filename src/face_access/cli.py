@@ -15,6 +15,7 @@ def parser():
     demo.add_argument('--camera-backend',choices=['auto','dshow','msmf'])
     demo.add_argument('--barrier',dest='barrier_host',metavar='HOST',help='Pluma ESP32 por UDP (pluma.local o su IP); sin esto la puerta es simulada')
     demo.add_argument('--barrier-port',type=int)
+    demo.add_argument('--supervised-actuation',action='store_true',help='Prueba supervisada: permite accionar puerta/servo con modelo no aprobado; no cambia su calibración ni aprobación')
     demo.add_argument('--device',choices=['auto','cpu','cuda']);demo.add_argument('--no-mirror',action='store_true');demo.add_argument('--debug',action='store_true')
     demo.add_argument('--preview-only',action='store_true');demo.add_argument('--check',action='store_true',help='Cargar/validar sin abrir cámara');demo.add_argument('--events',type=Path)
     cap=sub.add_parser('capture',help='Capturar candidatos con consentimiento; no aprueba imágenes')
@@ -55,6 +56,9 @@ def main(argv=None):
             if path:
                 settings.update(load_config(path))
                 settings['model_dir']=resolve(settings['model_dir'],path.resolve().parent.parent)
+            # Always opt-in on this invocation; never inherited from a config.
+            settings['supervised_actuation']=args.supervised_actuation
+            if args.preview_only and args.supervised_actuation:raise ValueError('--preview-only no admite accionamiento supervisado')
             for field in ('model','model_dir','camera','camera_backend','device','barrier_host','barrier_port'):
                 if getattr(args,field) is not None:settings[field]=getattr(args,field)
             from .sources import parse_camera
@@ -69,7 +73,9 @@ def main(argv=None):
                 if args.preview_only:raise ValueError('Para prueba de detector sin modelo: self-test')
                 predictor=Predictor(checkpoint,calibration,settings['device'])
                 if predictor.calibration is None or predictor.checkpoint['smoke_only']:raise ValueError('Checkpoint sin calibración usable o smoke')
-                print(json.dumps(dict(ok=True,model=predictor.checkpoint['model_id'],labels=predictor.labels,threshold=predictor.calibration['threshold'],margin=predictor.calibration['margin'],authorization_enabled=predictor.authorization_enabled,camera_opened=False),ensure_ascii=False))
+                print(json.dumps(dict(ok=True,model=predictor.checkpoint['model_id'],labels=predictor.labels,threshold=predictor.calibration['threshold'],margin=predictor.calibration['margin'],
+                    authorization_enabled=predictor.authorization_enabled or args.supervised_actuation,model_approval_passed=predictor.authorization_enabled,
+                    supervised_actuation=args.supervised_actuation,camera_opened=False),ensure_ascii=False))
             else:run_demo(checkpoint,calibration,settings,args.preview_only,args.events)
         elif args.command=='capture':
             from .acquisition import capture
